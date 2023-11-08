@@ -1,0 +1,118 @@
+Protocoale de Comunicatii - Tema 4
+
+Client HTTP REST API
+
+Enuntul temei cere scrierea unui client care sa comunice prin cereri HTTP cu un
+server care dispune un REST API si reprezinta o baza de date pentru stocarea,
+vizualizarea si manipularea unor carti intr-o biblioteca online. Clientul
+interpreteaza comenzile citite de la tastatura si trimite HTTP request-uri in
+functie de comanda primita. Serverul raspunde la aceste cereri cu diverse
+cookie-uri, token-uri sau obiecte JSON cu informatia ceruta.
+
+0. Structura generala, conexiune server si exit
+
+Inainte de a ma apuca sa implementez propriu-zis handler-ele de cereri HTTP,
+am scris structura generala a functiei main. Am pornit de la scheletul de
+laborator [1] oferit de echipa PCom, si am scris in main un loop infinit care
+asteapta un input de la utilizator folosind un apel blocant de scanf. Astfel,
+pot deschide conexiunea prin TCP la server pentru fiecare comanda individual
+si sa inchid conexiunea dupa ce am tratat corespunzator acea comanda. Prin
+aceasta metoda evit necesitatea de a trimite cereri dummy la un interval de
+timp serverului pentru a mentine conexiunea pe perioade indelungate. Pentru
+fiecare comanda valida apelez un handler, mai putin comanda exit, care dezaloca
+memoria folosita, inchide conexiunea la server definitiv si incheie executia
+clientului.
+
+1. Register si Login
+
+In prima faza, am decis sa implementez functiile de logare, respectiv
+inregistrare cu niste credentiale date de la tastatura. Cele doua functii
+sunt foarte similare, la ambele clientul trimite un POST la un URL de pe
+server, ele fiind distincte doar din punctul de vedere al eventualei erori
+primite ca raspuns de la server. In caz de succes, la logare, se returneaza
+in raspunsul HTTP si un Cookie care fixeaza conexiunea cu serverul si care
+va fi trimis in toate cererile ce vor urma pana la logout sau exit. Este
+important de mentionat si faptul ca credentialele, in ambele cazuri, sunt
+trimise in POST ca obiecte JSON. De aceea am inclus in headerele clientului
+biblioteca recomandata in enunt, de manipulare JSON, Parson. Dupa citirea de
+la stdin a cuvantului de comanda "register" sau "login", am citit username-ul
+si parola cu care se va identifica utilizatorul serverului, verificand in
+acelasi timp ca aceste credentiale sa nu fie siruri goale de caractere sau sa
+contina spatii. Dupa aceea, cu apel la functiile expuse in API-ul Parson, am
+serializat un obiect JSON conform formatului specificat in enunt, care sa
+contina username-ul si parola. Am trimis catre server cererea, asteptand
+raspunsul si dupa am analizat statutul raspunsului. Un caz de eroare ce poate
+fi intors la register este acela in care deja exista in baza de date a
+serverului un utilizator cu acelasi nume, iar in cazul login-ului se poate ca
+datele sa fie introduse eronat. Verific aceste cazuri in codul raspunsului, iar
+daca raspunsul este bun se afiseaza la stdout un mesaj care informeaza
+utilizatorul ca cererea a fost facuta cu succes. In cazul login-ului se retine
+cookie-ul de sesiune pentru a fi trimis in cererile ulterioare.
+
+2. Logout si Enter_Library
+
+Urmatoarele comenzi pe care le-am implementat sunt si cele mai simple. Ele se
+aseamana prin faptul ca la ambele este nevoie de demonstrarea conexiunii la
+server prin cookie-ul de sesiune, dar difera prin datele intoarse in response.
+La logout nu se intoarce nimic, iar la enter_library se va intoarce un token
+JWT de autentificare la biblioteca. Acest token va fi folosit mai departe in
+toate operatiile pe biblioteca. In implementarea celor doua functii, am
+construit cererea GET potrivita si am verificat codurile de eroare pentru
+fiecare raspuns HTTP. Am afisat mesajele potrivite de eroare/succes pentru
+fiecare operatie. In cazul logout-ului am eliberat memoria pentru tokenul JWT
+si cookie-ul de sesiune, deoarece acestea raman valabile chiar si dupa logout,
+dar nu doresc in client un comportament in care utilizatorul sa fie capabil
+sa-si acceseze biblioteca dupa ce s-a delogat. In cazul operatiei de accesare
+a bibliotecii, am preluat datele din raspuns, un obiect JSON, pe care l-am
+deserializat pentru a obtine token-ul de acces si a-l retine pentru uz viitor.
+
+3. Get_Book(s)
+
+Urmatoarele doua comenzi implementate au fost cea de get_books, precum si cea
+de get_book. Acestea trimit o cerere GET catre url-ul bibliotecii, si primesc
+ca raspuns cartea ceruta, respectiv intreaga lista de carti ale utilizatorului.
+Pentru get_books, dupa ce am verificat codul raspunsului de la server, am
+afisat la stdout intreaga lista de carti, in format JSON, in caz de succes.
+Similar, la get_book, am afisat tot obiectul JSON care reprezinta datele despre
+carte. Pentru ambele functii am fost nevoit sa ma asigur ca tokenul JWT este
+parte din cerere, iar pentru get_book a mai trebuit sa verific daca id-ul
+cartii cerute exista in lista de carti a utilizatorului, ambele erori fiind
+tratate de server si returnate in codurile respective de eroare. De asemenea,
+la get_book a trebuit sa verific ca id-ul pe care il citesc de la stdin este
+un numar sau ca nu e empty string.
+
+4. Add_Book si Delete_Book
+
+Ultima pereche de functii implementate de mine consta in handler-ele pentru
+operatiile add_book si delete_book. Add_book, cea mai complexa dintre cele
+doua, va construi o cerere POST catre server, care va adauga la lista curenta
+de carti a utilizatorului cartea ale carei date vor fi citite de la stdin.
+Toate aceste date sunt verificate pentru validitate conform specificatiilor
+din cerinta, serializate intr-un obiect JSON si trimise intr-o cerere HTTP
+catre server. In raspuns trebuie sa tratez cazul in care a lipsit tokenul JWT,
+caz de eroare, iar in caz de succes afisez un mesaj care sa notifice
+utilizatorul de acest lucru. Pentru delete_book se construieste o cerere DELETE
+ce va fi trimisa la server, lucru care mi-a impus sa mai adaug o functie
+similara cu cele din scheletul laboratorului [1], care construieste o cerere
+DELETE conform unor parametri si o returneaza. In afara de acest lucru si de
+validarea id-ului cartii ce va fi stearsa, functia este similara cu cea de add,
+fiind nevoie doar de verificarea existentei token-ului de autorizare in cerere.
+
+5. Verificare
+
+Am trecut tema prin scriptul de verificare al echipei de PCom [2], aceasta
+trecand cu bine majoritatea scenariilor. Singura problema este la scenariile
+cu date invalide trimise de utilizator, unde scriptul pare sa astepte ca
+cererea sa fie trimisa, in ciuda erorilor de validitate a datelor, dar clientul
+meu trateaza local aceste erori si nu mai trimite cererea.
+
+Concluzii:
+
+Dificultate: usoara
+Sleep days folosite: 2
+Timp de completare: maxim 5 ore (daca stiam ca iese asa repede nu mai stateam pana in ultima secunda :) )
+
+Surse:
+
+[1] https://gitlab.cs.pub.ro/pcom/pcom-laboratoare-public/-/tree/master/lab9
+[2] https://gitlab.cs.pub.ro/pcom/homework4-public
